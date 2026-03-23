@@ -1,12 +1,14 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import ChatWindow from './components/ChatWindow';
 import MessageInput from './components/MessageInput';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
 import OnboardingModal from './components/OnboardingModal';
+import PrivacyPolicyModal from './src/components/PrivacyPolicyModal';
 import Logo from './components/Logo';
+import  Privacy  from './src/Privacy'; 
 import { Message, ChatRole, ChatSession, UserPreferences, Attachment, Project, AuthUser, SpecialistId } from './types';
 import { generateAiResponse } from './services/geminiService';
 import { auth, loginWithGoogle, logout } from './services/firebase';
@@ -21,9 +23,16 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'personalization'>('general');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  // Safety timeout for auth loading
+  useEffect(() => {
+    const timer = setTimeout(() => setIsAuthLoading(false), 2000);
+    return () => clearTimeout(timer);
+  }, []);
   
   const [prefs, setPrefs] = useState<UserPreferences>({
     name: '',
@@ -32,7 +41,8 @@ const App: React.FC = () => {
     uiLanguage: 'tg',
     responseStyle: 'simple',
     theme: 'light',
-    hasSeenOnboarding: false
+    hasSeenOnboarding: false,
+    hasAgreedToPrivacy: false
   });
 
   // Load Prefs, Projects, Sessions & Auth
@@ -55,7 +65,7 @@ const App: React.FC = () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Migrations
+        // Migrations for language/mode
         if (parsed.level === 'beginner') parsed.level = 'ибтидоӣ';
         if (parsed.level === 'intermediate') parsed.level = 'миёна';
         if (parsed.level === 'advanced') parsed.level = 'пешрафта';
@@ -65,7 +75,7 @@ const App: React.FC = () => {
         if (parsed.mode === 'teacher') parsed.mode = 'омӯзгор';
         if (parsed.mode === 'writer') parsed.mode = 'нависанда';
         
-        // Remove 'about' if it exists in old localStorage data
+        if (parsed.hasAgreedToPrivacy === undefined) parsed.hasAgreedToPrivacy = false;
         if ('about' in parsed) delete parsed.about;
 
         setPrefs(parsed);
@@ -105,9 +115,21 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Auto-open Privacy Policy if not agreed
+  useEffect(() => {
+    if (!prefs.hasAgreedToPrivacy) {
+      setIsPrivacyOpen(true);
+    }
+  }, [prefs.hasAgreedToPrivacy]);
+
   // Persistence
   useEffect(() => {
-    localStorage.setItem('somoni_ai_prefs', JSON.stringify(prefs));
+    try {
+      localStorage.setItem('somoni_ai_prefs', JSON.stringify(prefs));
+    } catch (e) {
+      console.error("Error saving prefs to localStorage", e);
+    }
+    
     if (prefs.theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -116,18 +138,29 @@ const App: React.FC = () => {
   }, [prefs]);
 
   useEffect(() => {
-    localStorage.setItem('somoni_ai_projects', JSON.stringify(projects));
+    try {
+      localStorage.setItem('somoni_ai_projects', JSON.stringify(projects));
+    } catch (e) {
+      console.error("Error saving projects to localStorage", e);
+    }
   }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem('somoni_ai_sessions', JSON.stringify(sessions));
+    try {
+      localStorage.setItem('somoni_ai_sessions', JSON.stringify(sessions));
+    } catch (e) {
+      console.error("Error saving sessions to localStorage", e);
+    }
   }, [sessions]);
 
   const handleLogin = async () => {
     try {
       await loginWithGoogle();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Login failed", e);
+      const message = e instanceof Error ? e.message : "Хатогӣ ҳангоми воридшавӣ";
+      setError(message);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -142,6 +175,11 @@ const App: React.FC = () => {
   const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId) || null, [sessions, activeSessionId]);
 
   const handleUpdatePrefs = (update: Partial<UserPreferences>) => setPrefs(prev => ({ ...prev, ...update }));
+
+  const handleAcceptPrivacy = () => {
+    handleUpdatePrefs({ hasAgreedToPrivacy: true });
+    setIsPrivacyOpen(false);
+  };
 
   const handleOnboardingComplete = (name: string) => {
     handleUpdatePrefs({ name, hasSeenOnboarding: true });
@@ -220,6 +258,11 @@ const App: React.FC = () => {
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, projectId: projectId || undefined } : s));
   }, []);
 
+  const handleOpenSettings = (tab: 'general' | 'personalization' = 'general') => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
+  };
+
   if (isAuthLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-white dark:bg-slate-950">
@@ -242,59 +285,67 @@ const App: React.FC = () => {
     );
   }
 
-  const handleOpenSettings = (tab: 'general' | 'personalization' = 'general') => {
-    setSettingsTab(tab);
-    setIsSettingsOpen(true);
-  };
-
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-slate-900 overflow-hidden font-sans text-gray-950 dark:text-slate-50">
-      {!prefs.hasSeenOnboarding && <OnboardingModal onComplete={handleOnboardingComplete} />}
-      
-      <Sidebar 
-        sessions={sessions}
-        projects={projects}
-        activeSessionId={activeSessionId}
-        user={user}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        onSelectSession={setActiveSessionId}
-        onNewChat={handleNewChat}
-        onNewChatInProject={handleNewChatInProject}
-        onDeleteSession={id => { setSessions(p => p.filter(s => s.id !== id)); if (activeSessionId === id) setActiveSessionId(null); }}
-        onTogglePin={id => setSessions(p => p.map(s => s.id === id ? { ...s, isPinned: !s.isPinned } : s))}
-        onOpenSettings={handleOpenSettings}
-        onCreateProject={handleCreateProject}
-        onDeleteProject={handleDeleteProject}
-        onMoveToProject={handleMoveToProject}
-        onNewSpecialistChat={handleNewSpecialistChat}
-        isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-      />
-
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white dark:bg-slate-950 shadow-2xl">
-        <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 flex flex-col relative overflow-hidden">
-          <ChatWindow 
-            messages={activeSession?.messages || []} 
-            isLoading={isLoading} 
-            onSuggestionClick={(text) => handleSendMessage(text, [])}
+    <Routes>
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/" element={
+        <div className="flex h-screen bg-gray-50 dark:bg-slate-900 overflow-hidden font-sans text-gray-950 dark:text-slate-50">
+          {!prefs.hasSeenOnboarding && <OnboardingModal onComplete={handleOnboardingComplete} />}
+          
+          <Sidebar 
+            sessions={sessions}
+            projects={projects}
+            activeSessionId={activeSessionId}
+            user={user}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            onSelectSession={setActiveSessionId}
+            onNewChat={handleNewChat}
+            onNewChatInProject={handleNewChatInProject}
+            onDeleteSession={id => { setSessions(p => p.filter(s => s.id !== id)); if (activeSessionId === id) setActiveSessionId(null); }}
+            onTogglePin={id => setSessions(p => p.map(s => s.id === id ? { ...s, isPinned: !s.isPinned } : s))}
+            onOpenSettings={handleOpenSettings}
+            onCreateProject={handleCreateProject}
+            onDeleteProject={handleDeleteProject}
+            onMoveToProject={handleMoveToProject}
+            onNewSpecialistChat={handleNewSpecialistChat}
+            onOpenPrivacy={() => setIsPrivacyOpen(true)}
+            isOpen={isSidebarOpen}
+            onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           />
-          {error && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-4 py-3 rounded-2xl border border-red-100 dark:border-red-900/30 shadow-xl text-sm flex items-center gap-3 animate-bounce z-50">
-            <i className="fa-solid fa-circle-exclamation text-red-500"></i> {error}
-          </div>}
-          <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading} />
-        </main>
-      </div>
 
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        prefs={prefs} 
-        onUpdatePrefs={handleUpdatePrefs} 
-        initialTab={settingsTab}
-      />
-    </div>
+          <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white dark:bg-slate-950 shadow-2xl">
+            <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+            <main className="flex-1 flex flex-col relative overflow-hidden">
+              <ChatWindow 
+                messages={activeSession?.messages || []} 
+                isLoading={isLoading} 
+                onSuggestionClick={(text) => handleSendMessage(text, [])}
+              />
+              {error && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-4 py-3 rounded-2xl border border-red-100 dark:border-red-900/30 shadow-xl text-sm flex items-center gap-3 animate-bounce z-50">
+                <i className="fa-solid fa-circle-exclamation text-red-500"></i> {error}
+              </div>}
+              <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+            </main>
+          </div>
+
+          <SettingsModal 
+            isOpen={isSettingsOpen} 
+            onClose={() => setIsSettingsOpen(false)} 
+            prefs={prefs} 
+            onUpdatePrefs={handleUpdatePrefs} 
+            initialTab={settingsTab}
+          />
+
+          <PrivacyPolicyModal 
+            isOpen={isPrivacyOpen} 
+            onClose={() => setIsPrivacyOpen(false)} 
+            onAccept={handleAcceptPrivacy}
+            isMandatory={!prefs.hasAgreedToPrivacy}
+          />
+        </div>
+      } />
+    </Routes>
   );
 };
 

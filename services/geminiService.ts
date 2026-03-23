@@ -1,11 +1,10 @@
 
-import { getBaseSystemPrompt, MODEL_NAME } from "../constants";
-import { Message, ChatRole, UserPreferences, Attachment } from "../types";
+import { Message, UserPreferences, Attachment } from "../types";
 
 /**
  * SERVICE LAYER SECURITY ARCHITECTURE:
- * The Gemini API key is exclusively sourced from import.meta.env.VITE_GEMINI_API_KEY.
- * This environment variable is managed by the Vite build process from .env.local file.
+ * This client-side module does not hold the Gemini API key.
+ * It sends requests to the server-side `/api/generate` endpoint, which keeps the key secret.
  */
 export const generateAiResponse = async (
   history: Message[], 
@@ -22,16 +21,23 @@ export const generateAiResponse = async (
       body: JSON.stringify({ history, prompt, prefs, currentAttachments, specialistId })
     });
 
+    const json = await resp.json().catch(() => null);
+
     if (!resp.ok) {
-      throw new Error('API_ERROR');
+      const msg = json?.error ?? `HTTP ${resp.status}`;
+      throw new Error(`API_ERROR: ${msg}`);
     }
 
-    const json = await resp.json();
-    if (!json?.text) throw new Error('EMPTY_RESPONSE');
+    if (!json?.text) {
+      const msg = json?.error ?? 'Empty response from server';
+      throw new Error(`EMPTY_RESPONSE: ${msg}`);
+    }
+
     return json.text as string;
   } catch (error) {
     console.error('Client generateAiResponse error:', error);
-    throw new Error('SEC_GENERIC_API_FAIL');
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message || 'SEC_GENERIC_API_FAIL');
   }
 };
     

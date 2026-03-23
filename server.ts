@@ -1,4 +1,5 @@
-import express from 'express';
+import 'dotenv/config';
+import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,14 +10,26 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  //  Лимити қабули маълумотро то 50MB зиёд кардем
+ // Дар server.ts ин сатрҳоро иваз кунед:
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true, parameterLimit: 100000 }));
   
   // API routes can go here
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', (req: Request, res: Response) => {
     res.json({ status: 'ok' });
   });
 
-  app.get('/api/download', async (req, res) => {
+  // AI generation endpoint
+  app.post('/api/generate', (req: Request, res: Response) => {
+    // Lazy-load handler to avoid early module initialization
+    import('./api/generate').then((mod) => mod.default(req, res)).catch((err) => {
+      console.error('Failed to load /api/generate handler:', err);
+      res.status(500).json({ error: 'Server error' });
+    });
+  });
+
+  app.get('/api/download', async (req: Request, res: Response) => {
     const { exec } = await import('child_process');
     const { promisify } = await import('util');
     const execAsync = promisify(exec);
@@ -26,12 +39,14 @@ async function startServer() {
       // Create tarball excluding node_modules and other artifacts
       await execAsync(`tar -czf "${archivePath}" --exclude=node_modules --exclude=dist --exclude=.next --exclude=.git .`);
       
-      res.download(archivePath, 'somoni-ai-project.tar.gz', (err) => {
+      res.download(archivePath, 'somoni-ai-project.tar.gz', (err: any) => {
         if (err) {
           console.error('Download error:', err);
         }
         // Cleanup after download
-        import('fs').then(fs => fs.unlinkSync(archivePath)).catch(() => {});
+        import('fs').then(fs => {
+          if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
+        }).catch(() => {});
       });
     } catch (error) {
       console.error('Archive creation failed:', error);
@@ -48,13 +63,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
+    app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(__dirname, 'dist/index.html'));
     });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    
   });
 }
 

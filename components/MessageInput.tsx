@@ -86,7 +86,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoading })
   }, [inputText]);
 
   return (
-    <div className="bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 p-4 sticky bottom-0 z-20 transition-colors">
+    <div className="bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 p-3 sm:p-4 sticky bottom-0 z-20 transition-colors">
       <div className="max-w-3xl mx-auto mb-3 flex flex-wrap gap-2">
         {attachments.map(att => (
           <div key={att.id} className="relative group animate-in zoom-in duration-200">

@@ -22,7 +22,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, onSuggesti
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-slate-900 transition-colors overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center bg-gray-50 dark:bg-slate-900 transition-colors overflow-y-auto">
         <div className="relative mb-6 flex-shrink-0">
           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full"></div>
           <div className="relative w-32 h-32 bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl flex items-center justify-center border border-white/50 dark:border-slate-700 backdrop-blur-sm">
