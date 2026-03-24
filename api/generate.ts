@@ -335,37 +335,42 @@ export default async function handler(req: Request, res: Response) {
 
     contents.push({ role: 'user', parts: currentParts });
 
-    const PRIMARY_MODEL = 'gemini-2.5-flash-lite';
-const FALLBACK_MODEL = 'gemini-1.5-flash';
+    // 3. Генерация (PRO стабильный вариант)
 
-let response;
+const MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash'
+];
 
-try {
-  console.log('Using model:', PRIMARY_MODEL);
+let response: any = null;
+let lastError: any = null;
 
-  response = await ai.models.generateContent({
-    model: PRIMARY_MODEL,
-    contents,
-    config: {
-      systemInstruction: getBaseSystemPrompt(prefs, specialistId),
-      temperature: 0.6,
-      topP: 0.95,
-    },
-  });
+for (const model of MODELS) {
+  try {
+    console.log('Trying model:', model);
 
-} catch (err: any) {
-  console.warn('Primary model failed, switching to fallback...', err?.message);
+    response = await ai.models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction: getBaseSystemPrompt(prefs, specialistId),
+        temperature: 0.6,
+        topP: 0.95,
+      },
+    });
 
-  response = await ai.models.generateContent({
-    model: FALLBACK_MODEL,
-    contents,
-    config: {
-      systemInstruction: getBaseSystemPrompt(prefs, specialistId),
-      temperature: 0.6,
-      topP: 0.95,
-    },
-  });
+    if (response?.text) break;
+
+  } catch (err: any) {
+    console.warn(`Model ${model} failed:`, err?.message);
+    lastError = err;
+  }
 }
+
+if (!response || !response.text) {
+  throw lastError || new Error('All models failed');
+}
+
 
     const text = response.text;
     if (!text) {
