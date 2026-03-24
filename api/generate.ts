@@ -96,6 +96,18 @@ II. LANGUAGE POLICY (CRITICAL)
 
 If the user's language is unclear, ask briefly for clarification.
 
+If the user asks to switch language (examples):
+• "бо забони руси"
+• "на русском"
+• "speak English"
+• "in English"
+• "бо англиси"
+
+You MUST immediately switch to that language starting from the next reply.
+
+Do NOT explain.
+Do NOT confirm.
+Just switch language.
 ────────────────────────────────
 III. INTELLIGENCE FRAMEWORK
 ────────────────────────────────
@@ -323,15 +335,37 @@ export default async function handler(req: Request, res: Response) {
 
     contents.push({ role: 'user', parts: currentParts });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-preview',
-      contents,
-      config: {
-        systemInstruction: getBaseSystemPrompt(prefs, specialistId),
-        temperature: 0.6,
-        topP: 0.95,
-      },
-    });
+    const PRIMARY_MODEL = 'gemini-2.5-flash-lite';
+const FALLBACK_MODEL = 'gemini-1.5-flash';
+
+let response;
+
+try {
+  console.log('Using model:', PRIMARY_MODEL);
+
+  response = await ai.models.generateContent({
+    model: PRIMARY_MODEL,
+    contents,
+    config: {
+      systemInstruction: getBaseSystemPrompt(prefs, specialistId),
+      temperature: 0.6,
+      topP: 0.95,
+    },
+  });
+
+} catch (err: any) {
+  console.warn('Primary model failed, switching to fallback...', err?.message);
+
+  response = await ai.models.generateContent({
+    model: FALLBACK_MODEL,
+    contents,
+    config: {
+      systemInstruction: getBaseSystemPrompt(prefs, specialistId),
+      temperature: 0.6,
+      topP: 0.95,
+    },
+  });
+}
 
     const text = response.text;
     if (!text) {
