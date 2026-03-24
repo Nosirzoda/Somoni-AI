@@ -9,6 +9,7 @@ import OnboardingModal from './components/OnboardingModal';
 import PrivacyPolicyModal from './src/components/PrivacyPolicyModal';
 import Logo from './components/Logo';
 import Privacy from './src/Privacy';
+import { Analytics } from '@vercel/analytics/react';
 import {
   Message,
   ChatRole,
@@ -481,12 +482,24 @@ const App: React.FC = () => {
             </div>
 
             <SettingsModal
-              isOpen={isSettingsOpen}
-              onClose={() => setIsSettingsOpen(false)}
-              prefs={prefs}
-              onUpdatePrefs={handleUpdatePrefs}
-              initialTab={settingsTab}
-            />
+  isOpen={isSettingsOpen}
+  onClose={() => setIsSettingsOpen(false)}
+  prefs={prefs}
+  onUpdatePrefs={handleUpdatePrefs}
+  initialTab={settingsTab}
+/>
+
+<PrivacyPolicyModal
+  isOpen={isPrivacyOpen}
+  onClose={() => {
+    if (!prefs.hasAgreedToPrivacy) return;
+    setIsPrivacyOpen(false);
+  }}
+  onAccept={handleAcceptPrivacy}
+  isMandatory={!prefs.hasAgreedToPrivacy}
+/>
+
+<Analytics />
 
             <PrivacyPolicyModal
               isOpen={isPrivacyOpen}
@@ -502,6 +515,7 @@ const App: React.FC = () => {
       />
     </Routes>
   );
+
 };
 
 export default App;
