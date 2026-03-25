@@ -337,33 +337,54 @@ export default async function handler(req: Request, res: Response) {
 
     // 3. Генерация (PRO стабильный вариант)
 
-const MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash'
-];
+const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let response: any = null;
 let lastError: any = null;
 
 for (const model of MODELS) {
-  try {
-    console.log('Trying model:', model);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`Trying model: ${model}, attempt: ${attempt}`);
 
-    response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction: getBaseSystemPrompt(prefs, specialistId),
-        temperature: 0.6,
-        topP: 0.95,
-      },
-    });
+      response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: getBaseSystemPrompt(prefs, specialistId),
+          temperature: 0.6,
+          topP: 0.95,
+        },
+      });
 
-    if (response?.text) break;
+      if (response?.text) {
+        break;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const msg = String(err?.message || '');
 
-  } catch (err: any) {
-    console.warn(`Model ${model} failed:`, err?.message);
-    lastError = err;
+      const isTemporary =
+        msg.includes('503') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('high demand') ||
+        msg.includes('overloaded');
+
+      console.warn(`Model ${model} failed on attempt ${attempt}:`, msg);
+
+      if (isTemporary && attempt < 2) {
+        await sleep(1200);
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  if (response?.text) {
+    break;
   }
 }
 
@@ -378,17 +399,36 @@ if (!response || !response.text) {
     }
 
     return res.status(200).json({ text });
-  } catch (err: any) {
-    console.error('❌ Error in /api/generate:', err);
+ } catch (err: any) {
+  console.error('❌ Error in /api/generate:', err);
 
-    if (err?.message?.includes('413') || err?.message?.includes('too large')) {
-      return res.status(413).json({
-        error: 'Файл ё таърихи паёмҳо аз ҳад зиёд калон аст. Лутфан чатро тоза кунед.',
-      });
-    }
+  const msg = String(err?.message || '');
 
-    return res.status(500).json({
-      error: err?.message || 'Хатогии сервер ҳангоми тавлиди ҷавоб',
+  if (msg.includes('413') || msg.includes('too large')) {
+    return res.status(413).json({
+      error: 'Файл ё таърихи паёмҳо аз ҳад зиёд калон аст. Лутфан чатро тоза кунед.',
     });
   }
+
+  if (
+    msg.includes('503') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded')
+  ) {
+    return res.status(503).json({
+      error: 'Сервери AI муваққатан сербор аст. Лутфан баъд аз чанд сония боз кӯшиш кунед.',
+    });
+  }
+
+  if (msg.includes('404') || msg.includes('not found')) {
+    return res.status(500).json({
+      error: 'Танзимоти модели AI нодуруст аст. Модели фаъолро тафтиш кунед.',
+    });
+  }
+
+  return res.status(500).json({
+    error: 'Хатогии сервер ҳангоми тавлиди ҷавоб',
+  });
 }
+  }
